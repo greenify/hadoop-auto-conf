@@ -4,8 +4,8 @@ import re
 from os import path
 
 env.roledefs = {
-    'master': ['root@0.0.0.0:49159'],
-    'client': ['root@0.0.0.0:49160', 'root@0.0.0.0:49161']
+    'master': ['root@0.0.0.0:49162'],
+    'client': ['root@0.0.0.0:49163', 'root@0.0.0.0:49164']
 }
 
 ##
@@ -37,6 +37,8 @@ masterIPFile = "master.ip"
 
 
 def install():
+    initDir()
+
     package_ensure_apt('openjdk-7-jdk')
 
     if not file_exists(hadoopFile + ".tar.gz"):
@@ -221,7 +223,7 @@ def startYarn():
 
 def hdfsTest():
     with cd("/tmp"):
-        if not file_exists('/tmp/pg4300.text'):
+        if not file_exists('/tmp/pg4300.txt'):
             run('wget http://www.gutenberg.org/cache/epub/4300/pg4300.txt')
 
         with prefix('source /etc/profile.d/hadoop '):
@@ -260,11 +262,14 @@ def user(command):
     return sudo(command, user=userName)
 
 
+# this is super weird, but somehow the clients try to resolve the domain
+# names of the other clients
 def updateClients():
     with open(clientFile, "r") as file:
         clients = file.read().split('\n')
         file_update('/etc/hosts', lambda _: text_ensure_line(_, *clients))
-        file_write(configDir + '/slaves', '\n'.join(map(lambda x: x.split(" ")[0], clients)))
+        if "master" in env.roles:
+            file_write(configDir + '/slaves', '\n'.join(map(lambda x: x.split(" ")[0], clients)))
 
     # we should reformat our index (this is dangerous)
     hdfsConf()
@@ -279,3 +284,12 @@ def getMasterIP():
         with open(masterIPFile, "r") as file:
             env.masterIP = file.read()
     return env.masterIP
+
+
+def initDir():
+    try:
+        os.remove(clientFile)
+        os.remove(masterIPFile)
+        os.remove(keyFile)
+    except OSError:
+        pass

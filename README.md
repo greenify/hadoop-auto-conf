@@ -9,12 +9,14 @@ package manager for the JAVA installation in the configuration.
 
 Steps to run:
 
-1) Edit your client and masters in the `fabfile.py`  
-2) `fab -R master setup`  
-3) `fab -P -R client setup`  
-4) `fab -R master updateClients start`  
+1) Edit your client and masters in the `fabfile.py`
+2) `fab -R master setup`
+3) `fab -P -R client setup`
+4) `fab -R master updateClients start`
 
-## Dependencies
+You can test your installation with `fab -R hdfsTest`
+
+## Dependenices
 
 You need to have ssh and fabric installed.
 
