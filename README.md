@@ -10,9 +10,9 @@ package manager for the JAVA installation in the configuration.
 Steps to run:
 
 1) Edit your client and masters in the `fabfile.py`
-2) fab -R master setup
-3) fab -P -R client setup
-4) fab -R master updateClients start
+2) `fab -R master setup`
+3) `fab -P -R client setup`
+4) `fab -R master updateClients start`
 
 ## Dependenices
 
