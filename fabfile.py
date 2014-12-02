@@ -4,12 +4,9 @@ import re
 from os import path
 
 env.roledefs = {
-    'master': ['root@0.0.0.0:49156'],
-    'client': ['root@0.0.0.0:49157', 'root@0.0.0.0:49158']
+    'master': ['root@0.0.0.0:49159'],
+    'client': ['root@0.0.0.0:49160', 'root@0.0.0.0:49161']
 }
-
-# user config
-masterIP = "172.17.0.11"
 
 ##
 # An easy way to setup a distributed hadoop
@@ -36,6 +33,7 @@ JAVA_HOME = "/usr/lib/jvm/java-7-openjdk-amd64"
 configDir = installDir + "/etc/hadoop"
 keyFile = "keyfile.ssh"
 clientFile = "clients.ips"
+masterIPFile = "master.ip"
 
 
 def install():
@@ -77,6 +75,7 @@ def install():
     print(pubkey)
     ssh_authorize(userName, pubkey)
 
+
 def etc_hosts():
     print('fixing /etc/hosts')
     ipAdress = run("ifconfig eth0 | grep 'inet addr:' | cut -d: -f2 | awk '{ print $1}'")
@@ -84,7 +83,11 @@ def etc_hosts():
     with mode_sudo():
         file_update('/etc/hosts', lambda _: text_ensure_line(_, "%s %s" % (ipAdress, hostName)))
 
-    if not isMaster():
+    if isMaster():
+        env.masterIP = ipAdress
+        with open(masterIPFile, "w") as file:
+            file.write(ipAdress)
+    else:
         lines = []
         if os.path.exists(clientFile):
             with open(clientFile, "r") as file:
@@ -95,7 +98,8 @@ def etc_hosts():
             lines.append(line)
 
         with open(clientFile, "w") as file:
-            file.write('\n'.join(lines))
+            file.write('\n'.join(filter(lambda x: len(x) > 1, lines)))
+
 
 def bashrc():
     lines = [
@@ -120,6 +124,7 @@ def javaHome():
     file_update(configDir + '/hadoop-env.sh', lambda _: re.sub('\$\{JAVA_HOME\}', JAVA_HOME, _))
     line = "export JAVA_HOME=%s" % JAVA_HOME
 
+
 def sshrc():
     line = "StrictHostKeyChecking no"
     sshFile = "/home/%s/.ssh/config" % userName
@@ -129,7 +134,7 @@ def sshrc():
 
 def hdSiteConf():
     siteConfig = "\n<property>\n\t<name>fs.default.name</name>\n"
-    siteConfig += "\t<value>hdfs://%s:9000</value>\n</property>" % (masterIP)
+    siteConfig += "\t<value>hdfs://%s:9000</value>\n</property>" % (getMasterIP())
     file_update(configDir + '/core-site.xml', lambda _:
         re.sub('(?<=<configuration>)(.|\n)*(?=\n<\/configuration>)', siteConfig, _))
     dir_ensure(storeDir + "/hdfs/datanode", recursive=True, owner=userName, group=userName)
@@ -147,7 +152,7 @@ def hdYarnConf():
 </property>"""
 
     yarnConfig += "\n<property>\n\t<name>yarn.resourcemanager.hostname</name>\n"
-    yarnConfig += "\t<value>%s</value>\n" % (masterIP)
+    yarnConfig += "\t<value>%s</value>\n" % (getMasterIP())
     yarnConfig += "\t<description>Master resource manager</description>\n</property>"
 
     file_update(configDir + '/yarn-site.xml', lambda _:
@@ -186,6 +191,7 @@ def hdfsConf():
     if "master" in env.roles:
         jh = "JAVA_HOME=%s " % JAVA_HOME
         user("echo 'Y' |" + jh + "%s/bin/hdfs namenode -format" % (installDir))
+
 
 def start():
     startNode()
@@ -260,6 +266,16 @@ def updateClients():
         file_update('/etc/hosts', lambda _: text_ensure_line(_, *clients))
         file_write(configDir + '/slaves', '\n'.join(map(lambda x: x.split(" ")[0], clients)))
 
+    # we should reformat our index (this is dangerous)
+    hdfsConf()
+
 
 def isMaster():
     return "master" in env.roles
+
+
+def getMasterIP():
+    if 'masterIP' not in env:
+        with open(masterIPFile, "r") as file:
+            env.masterIP = file.read()
+    return env.masterIP

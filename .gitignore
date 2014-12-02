@@ -1,3 +1,4 @@
 keyfile.ssh
 clients.ips
+master.ip
 *.pyc
