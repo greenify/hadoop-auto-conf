@@ -2,10 +2,11 @@ from fabric.api import run, env, prefix, sudo, cd, settings
 from cuisine import *
 import re
 from os import path
+#import logging ; logging.basicConfig(level=logging.DEBUG)
 
 env.roledefs = {
-    'master': ['root@0.0.0.0:49162'],
-    'client': ['root@0.0.0.0:49163', 'root@0.0.0.0:49164']
+    'master': ['mesos-waterm'],
+    'client': ['mesos-water1', 'mesos-water2']
 }
 
 ##
@@ -34,12 +35,15 @@ configDir = installDir + "/etc/hadoop"
 keyFile = "keyfile.ssh"
 clientFile = "clients.ips"
 masterIPFile = "master.ip"
-
+sshFile = "/home/%s/.ssh/config" % userName
 
 def install():
     initDir()
 
-    package_ensure_apt('openjdk-7-jdk')
+    fixHostname()
+
+    package_update()
+    package_ensure('openjdk-7-jdk')
 
     if not file_exists(hadoopFile + ".tar.gz"):
         print("downloading hadoop")
@@ -49,9 +53,9 @@ def install():
     run("tar xfz " + hadoopFile + ".tar.gz")
 
     print('setting user %s' % userName)
-    user_ensure(userName)
-    group_ensure(userName)
 
+    user_ensure(userName, shell="/bin/bash")
+    group_ensure(userName)
     print("initing installDir")
     with mode_sudo():
         dir_remove(installDir)
@@ -64,9 +68,10 @@ def install():
 
     print("ensuring ssh key")
     if isMaster():
-        keyPath = ssh_keygen(userName, keytype="rsa")
-        pubkey = file_read(keyPath)
-        print keyFile
+        pubkey = ""
+        with mode_sudo():
+            keyPath = ssh_keygen(userName, keytype="rsa")
+            pubkey = file_read(keyPath)
         with open(keyFile, "w+") as file:
             file.write(pubkey)
         print("key saved")
@@ -74,17 +79,25 @@ def install():
         with open(keyFile, "r") as file:
             pubkey = file.read().replace('\n', '')
 
-    print(pubkey)
-    ssh_authorize(userName, pubkey)
+    with mode_sudo():
+        ssh_authorize(userName, pubkey)
+
+
+def fixHostname():
+    print('fixing /etc/hosts (virtual ubuntu)')
+    hostName = run("hostname")
+    print(hostName)
+    with settings(warn_only=True):
+        sudo("! grep %s /etc/hosts && echo %s %s >> /etc/hosts" % (hostName, getIP(), hostName))
+
+
+def getIP():
+    return run("ifconfig eth0 | grep 'inet addr:' | cut -d: -f2 | awk '{ print $1}'")
 
 
 def etc_hosts():
-    print('fixing /etc/hosts')
-    ipAdress = run("ifconfig eth0 | grep 'inet addr:' | cut -d: -f2 | awk '{ print $1}'")
     hostName = run("hostname")
-    with mode_sudo():
-        file_update('/etc/hosts', lambda _: text_ensure_line(_, "%s %s" % (ipAdress, hostName)))
-
+    ipAdress = getIP()
     if isMaster():
         env.masterIP = ipAdress
         with open(masterIPFile, "w") as file:
@@ -129,9 +142,10 @@ def javaHome():
 
 def sshrc():
     line = "StrictHostKeyChecking no"
-    sshFile = "/home/%s/.ssh/config" % userName
-    file_ensure(sshFile)
-    file_update(sshFile, lambda _: text_ensure_line(_, line))
+
+    with mode_sudo():
+        file_ensure(sshFile)
+        file_update(sshFile, lambda _: text_ensure_line(_, line))
 
 
 def hdSiteConf():
@@ -196,8 +210,9 @@ def hdfsConf():
 
 
 def start():
-    startNode()
-    startYarn()
+    with mode_user(userName):
+        startNode()
+        startYarn()
 
 
 def startNode():
@@ -267,12 +282,17 @@ def user(command):
 def updateClients():
     with open(clientFile, "r") as file:
         clients = file.read().split('\n')
-        file_update('/etc/hosts', lambda _: text_ensure_line(_, *clients))
-        if "master" in env.roles:
-            file_write(configDir + '/slaves', '\n'.join(map(lambda x: x.split(" ")[0], clients)))
+        with mode_sudo():
+            file_ensure(sshFile, owner=userName, group=userName)
+            file_update('/etc/hosts', lambda _: text_ensure_line(_, *clients))
+            if "master" in env.roles:
+                with open(masterIPFile, "r") as mFile:
+                    clients.append(mFile.read().strip())
+                    file_write(configDir + '/slaves', '\n'.join(map(lambda x: x.split(" ")[0], clients)), group=userName, owner=userName)
 
     # we should reformat our index (this is dangerous)
-    hdfsConf()
+    with mode_user(userName):
+        hdfsConf()
 
 
 def isMaster():
