@@ -1,5 +1,6 @@
 from fabric.api import run, env, prefix, sudo, cd, settings
 from cuisine import *
+from mesos import mesos
 import re
 from os import path
 #import logging ; logging.basicConfig(level=logging.DEBUG)
@@ -36,6 +37,7 @@ keyFile = "keyfile.ssh"
 clientFile = "clients.ips"
 masterIPFile = "master.ip"
 sshFile = "/home/%s/.ssh/config" % userName
+
 
 def install():
     initDir()
@@ -305,6 +307,10 @@ def getMasterIP():
             env.masterIP = file.read()
     return env.masterIP
 
+
+def cleanHdsfs():
+    dir_remove(storeDir + "/hdfs/namenode/current", recursive=True)
+    dir_remove(storeDir + "/hdfs/datanode/current", recursive=True)
 
 def initDir():
     try:
